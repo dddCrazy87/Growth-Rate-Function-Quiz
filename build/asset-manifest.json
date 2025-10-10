@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/Growth-Rate-Function-Quiz/static/css/main.2a51fe00.css",
+    "main.js": "/Growth-Rate-Function-Quiz/static/js/main.79b27804.js",
+    "index.html": "/Growth-Rate-Function-Quiz/index.html",
+    "main.2a51fe00.css.map": "/Growth-Rate-Function-Quiz/static/css/main.2a51fe00.css.map",
+    "main.79b27804.js.map": "/Growth-Rate-Function-Quiz/static/js/main.79b27804.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.2a51fe00.css",
+    "static/js/main.79b27804.js"
+  ]
+}
