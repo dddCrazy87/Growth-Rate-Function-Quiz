@@ -22,6 +22,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script>
+        // 由程式逐張排版公式，不讓 MathJax 在載入時掃描整頁
+        window.MathJax = {
+            tex: { inlineMath: [['\\(', '\\)']] },
+            startup: { typeset: false }
+        };
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
     <style>
         * {
@@ -30,11 +37,22 @@
             box-sizing: border-box;
         }
 
+        [hidden] {
+            display: none !important;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: linear-gradient(to bottom right, #eff6ff, #e0e7ff);
             min-height: 100vh;
             padding: 2rem;
+            color: #1f2937;
+        }
+
+        body.is-dragging,
+        body.is-dragging * {
+            cursor: grabbing !important;
+            user-select: none;
         }
 
         .container {
@@ -53,7 +71,32 @@
         .subtitle {
             text-align: center;
             color: #4b5563;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* 分頁 */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab {
+            border: 2px solid #c7d2fe;
+            background: white;
+            color: #4338ca;
+            font-weight: 600;
+            font-size: 1rem;
+            padding: 0.5rem 1.25rem;
+            border-radius: 999px;
+            cursor: pointer;
+        }
+
+        .tab[aria-selected="true"] {
+            background: #4f46e5;
+            border-color: #4f46e5;
+            color: white;
         }
 
         .card {
@@ -64,10 +107,11 @@
             margin-bottom: 1.5rem;
         }
 
+        /* 控制列 */
         .control-bar {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem 1rem;
             margin-bottom: 1rem;
             flex-wrap: wrap;
         }
@@ -77,16 +121,55 @@
             color: #374151;
         }
 
-        .input-number {
+        .stepper {
+            display: inline-flex;
+            align-items: stretch;
             border: 2px solid #d1d5db;
-            border-radius: 0.25rem;
-            padding: 0.5rem 0.75rem;
-            width: 5rem;
-            font-size: 1rem;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+
+        .stepper-btn {
+            width: 2.5rem;
+            border: none;
+            background: #f3f4f6;
+            color: #312e81;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .stepper-btn:hover:not(:disabled) {
+            background: #e0e7ff;
+        }
+
+        .stepper-btn:disabled {
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .input-number {
+            width: 3.5rem;
+            border: none;
+            border-left: 2px solid #d1d5db;
+            border-right: 2px solid #d1d5db;
+            text-align: center;
+            font-size: 1.05rem;
+            font-weight: 600;
+            padding: 0.5rem 0.25rem;
+            color: #111827;
+        }
+
+        .total {
+            color: #4b5563;
+        }
+
+        .total strong {
+            color: #312e81;
         }
 
         .btn {
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 0.5rem;
             padding: 0.5rem 1rem;
@@ -94,7 +177,7 @@
             border: none;
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.2s;
+            transition: background-color 0.2s;
             font-size: 0.95rem;
         }
 
@@ -105,6 +188,15 @@
 
         .btn-primary:hover {
             background: #4338ca;
+        }
+
+        .btn-light {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+
+        .btn-light:hover {
+            background: #c7d2fe;
         }
 
         .btn-success {
@@ -127,69 +219,176 @@
             background: #374151;
         }
 
-        .functions-list {
+        .hint {
+            color: #4b5563;
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .select-hint {
+            background: #eef2ff;
+            border-left: 4px solid #4f46e5;
+            color: #312e81;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.95rem;
+        }
+
+        /* 排序區：列（同一列 = 同級）與卡片 */
+        .rows {
             display: flex;
             flex-direction: column;
+        }
+
+        .gap {
+            min-height: 0.75rem;
+            position: relative;
+        }
+
+        .gap.active::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 4px;
+            margin-top: -2px;
+            border-radius: 2px;
+            background: #4f46e5;
+        }
+
+        .gap-btn {
+            display: block;
+            width: 100%;
+            margin: 0.4rem 0;
+            padding: 0.35rem;
+            border: 2px dashed #818cf8;
+            border-radius: 0.375rem;
+            background: #f5f7ff;
+            color: #4338ca;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .gap-btn:hover {
+            background: #e0e7ff;
+        }
+
+        .row {
+            display: flex;
+            align-items: flex-start;
             gap: 0.75rem;
-        }
-
-        .function-item {
-            background: linear-gradient(to right, #eef2ff, #dbeafe);
+            padding: 0.75rem;
             border: 2px solid #c7d2fe;
-            padding: 1rem;
             border-radius: 0.5rem;
-            cursor: move;
-            transition: all 0.2s;
+            background: linear-gradient(to right, #eef2ff, #dbeafe);
+            transition: background-color 0.15s, border-color 0.15s;
+        }
+
+        .row.merge-target {
+            border-color: #4f46e5;
+            background: #e0e7ff;
+            box-shadow: inset 0 0 0 2px #4f46e5;
+        }
+
+        .row-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4f46e5;
+            min-width: 2rem;
+            line-height: 2.75rem;
+            text-align: center;
+        }
+
+        .chips {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .chip {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            max-width: 100%;
+            min-height: 2.75rem;
+            padding: 0.35rem 0.75rem 0.35rem 0.25rem;
+            background: white;
+            border: 2px solid #c7d2fe;
+            border-radius: 0.375rem;
+            cursor: grab;
             user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
-        .function-item:hover {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        .chip:hover {
+            border-color: #818cf8;
         }
 
-        .function-item.dragging {
-            opacity: 0.5;
-            transform: scale(0.95);
+        .chip.selected {
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px #a5b4fc;
         }
 
-        .function-item.error {
+        .chip.drag-source {
+            opacity: 0.35;
+        }
+
+        .chip.error {
             border-color: #f87171;
             background: #fef2f2;
         }
 
-        .function-content {
+        .handle {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            align-self: stretch;
+            padding: 0 0.2rem;
+            color: #a5b4fc;
+            touch-action: none;
+            cursor: grab;
         }
 
-        .function-number {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #4f46e5;
-            min-width: 2.5rem;
+        .chip-body {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
         }
 
-        .function-text {
-            flex: 1;
+        .chip-math {
+            font-size: 1.2rem;
+            overflow-x: auto;
+            overflow-y: hidden;
         }
 
-        .function-latex {
-            font-size: 1.25rem;
-        }
-
-        .function-category {
-            font-size: 0.875rem;
+        .chip-meta {
+            font-size: 0.8rem;
             color: #6b7280;
-            margin-top: 0.25rem;
+            margin-top: 0.2rem;
         }
 
-        .function-rank {
-            font-size: 0.875rem;
-            color: #4b5563;
-            background: #f3f4f6;
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.25rem;
+        .chip-hint {
+            font-size: 0.8rem;
+            color: #b91c1c;
+            margin-top: 0.15rem;
+        }
+
+        .ghost {
+            position: fixed;
+            z-index: 1000;
+            margin: 0;
+            pointer-events: none;
+            opacity: 0.95;
+            box-shadow: 0 12px 24px -6px rgba(49, 46, 129, 0.35);
+        }
+
+        .mj-pending {
+            visibility: hidden;
         }
 
         .button-group {
@@ -220,6 +419,92 @@
             font-weight: 600;
         }
 
+        /* 正確順序 */
+        .answer {
+            margin-top: 1.5rem;
+        }
+
+        .answer-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .answer-item {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+        }
+
+        .answer-number {
+            font-weight: bold;
+            color: #4f46e5;
+            min-width: 1.5rem;
+        }
+
+        .answer-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .answer-chip {
+            background: white;
+            border: 1px solid #c7d2fe;
+            border-radius: 0.25rem;
+            padding: 0.2rem 0.5rem;
+            font-size: 1.1rem;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        .answer-cat {
+            font-size: 0.8rem;
+            color: #6b7280;
+        }
+
+        /* 函數總表 */
+        .notes-summary {
+            color: #4b5563;
+            margin-bottom: 1rem;
+        }
+
+        .notes-group + .notes-group {
+            margin-top: 1.25rem;
+        }
+
+        .notes-group h3 {
+            font-size: 1.1rem;
+            color: #312e81;
+            margin-bottom: 0.5rem;
+        }
+
+        .notes-group ul {
+            padding-left: 1.5rem;
+        }
+
+        .notes-group li {
+            margin-bottom: 0.4rem;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+
+        .notes-math {
+            display: inline-block;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            vertical-align: top;
+        }
+
         .instructions-list {
             list-style-position: inside;
             color: #374151;
@@ -240,6 +525,47 @@
             display: inline-block;
             vertical-align: middle;
         }
+
+        button:focus-visible,
+        input:focus-visible,
+        .chip:focus-visible {
+            outline: 3px solid #f59e0b;
+            outline-offset: 2px;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem 0.75rem;
+            }
+
+            .title {
+                font-size: 1.6rem;
+            }
+
+            .card {
+                padding: 1rem;
+            }
+
+            .row {
+                padding: 0.5rem;
+                gap: 0.5rem;
+            }
+
+            .row-number {
+                font-size: 1.15rem;
+                min-width: 1.5rem;
+            }
+
+            .chip-math {
+                font-size: 1.05rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                transition: none !important;
+            }
+        }
     </style>
 </head>
 
@@ -247,217 +573,641 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
 
+        // ===== 資料 =====
+        const CATEGORIES = [
+            { id: 'dexp', name: '指數的指數（double exponential）' },
+            { id: 'fact', name: '階乘（factorial）' },
+            { id: 'exp', name: '指數（exponential）' },
+            { id: 'subexp', name: '次指數（subexponential）' },
+            { id: 'quasi', name: '準多項式（quasi-polynomial）' },
+            { id: 'poly', name: '多項式（polynomial）' },
+            { id: 'between', name: '對數與多項式之間（superpolylogarithmic, subpolynomial）' },
+            { id: 'log', name: '對數（logarithmic）' },
+            { id: 'const', name: '常數（constant）' }
+        ];
+        const CATEGORY_NAME = Object.fromEntries(CATEGORIES.map(c => [c.id, c.name]));
+
+        // 每一項是一個等級，由成長最快排到最慢
+        // cards：同級的函數，各自拆成一張卡片；note：函數總表中的寫法（省略時與唯一的卡片相同）
+        const TIERS = [
+            { cat: 'dexp', cards: ['n^{2^n}'] },
+            { cat: 'dexp', cards: ['2^{2^{n+1}}'] },
+            { cat: 'dexp', cards: ['2^{2^n}'] },
+            { cat: 'fact', cards: ['n^n'] },
+            { cat: 'fact', cards: ['(n+1)!'] },
+            { cat: 'fact', cards: ['n!'] },
+            { cat: 'fact', cards: ['(\\lg n)^n'] },
+            { cat: 'exp', cards: ['d^n,\\ d>2'], note: '\\(d^n,\\ d>2\\) constant' },
+            { cat: 'exp', cards: ['n \\cdot 2^n'] },
+            { cat: 'exp', cards: ['2^n'] },
+            { cat: 'exp', cards: ['(1.0001)^n'] },
+            { cat: 'subexp', cards: ['2^{\\sqrt{n}}'] },
+            { cat: 'quasi', cards: ['n^{\\lg n}', '2^{\\lg^2 n}'], note: '\\(n^{\\lg n} = 2^{\\lg^2 n}\\)' },
+            { cat: 'quasi', cards: ['(\\lg n)^{\\lg n}', 'n^{\\lg \\lg n}'], note: '\\((\\lg n)^{\\lg n} = n^{\\lg \\lg n}\\)' },
+            { cat: 'quasi', cards: ['(\\lg n)!'] },
+            { cat: 'poly', cards: ['n^d,\\ d>2'], note: '\\(n^d,\\ d>2\\) constant' },
+            { cat: 'poly', cards: ['n^2', '4^{\\lg n}'], note: '\\(n^2 = 4^{\\lg n}\\)' },
+            { cat: 'poly', cards: ['n \\lg n', '\\lg(n!)'], note: '\\(n \\lg n =_{\\text{稍微大於}} \\lg(n!)\\)' },
+            { cat: 'poly', cards: ['n', '2^{\\lg n}'], note: '\\(n = 2^{\\lg n}\\)' },
+            { cat: 'poly', cards: ['(\\sqrt{2})^{\\lg n}', '\\sqrt{n}'], note: '\\((\\sqrt{2})^{\\lg n} = \\sqrt{n}\\)' },
+            { cat: 'poly', cards: ['n^{0.001}'] },
+            { cat: 'between', cards: ['2^{\\sqrt{2 \\lg n}}'] },
+            { cat: 'between', cards: ['(\\lg \\lg n)!'] },
+            { cat: 'log', cards: ['\\lg^k n,\\ k>1'], note: '\\(\\lg^k n,\\ k>1\\) constant' },
+            {
+                cat: 'log',
+                cards: ['\\lg n', '\\ln n', '\\lg(n^d),\\ d>0', '2^{\\lg \\lg n}'],
+                note: '\\(\\lg n = \\ln n = \\lg(n^d) = 2^{\\lg \\lg n}\\)，\\(d\\) is positive constant'
+            },
+            { cat: 'log', cards: ['\\sqrt{\\lg n}', '\\sqrt{2}^{\\lg \\lg n}'], note: '\\(\\sqrt{\\lg n} = \\sqrt{2}^{\\lg \\lg n}\\)' },
+            { cat: 'log', cards: ['2^{\\sqrt{\\lg \\lg n}}'] },
+            { cat: 'log', cards: ['\\lg \\lg n', '\\ln \\ln n'], note: '\\(\\lg \\lg n = \\ln \\ln n\\)' },
+            { cat: 'log', cards: ['2^{\\lg^* n}'] },
+            { cat: 'log', cards: ['\\lg^* n', '\\lg^*(\\lg n)'], note: '\\(\\lg^* n =_{\\text{稍微大於}} \\lg^*(\\lg n)\\)' },
+            { cat: 'log', cards: ['\\lg(\\lg^* n)'] },
+            { cat: 'const', cards: ['1', 'n^{\\frac{1}{\\lg n}}'], note: '\\(O(1) = n^{\\frac{1}{\\lg n}}\\ (= 2)\\)' }
+        ];
+
+        const TIER_LIST = TIERS.map((t, i) => ({ ...t, rank: i + 1, note: t.note || `\\(${t.cards[0]}\\)` }));
+        const CARDS = TIER_LIST.flatMap(t => t.cards.map((latex, j) => ({ id: `${t.rank}-${j}`, latex, rank: t.rank, cat: t.cat })));
+        const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
+        const MIN_COUNT = 2;
+        const DEFAULT_COUNT = 5;
+
+        // ===== 工具函式 =====
+        // Fisher–Yates 洗牌（每種排列機率相同）
+        const shuffle = (arr) => {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        };
+
+        const groupIndexOf = (groups, id) => groups.findIndex(g => g.includes(id));
+
+        // target：{ type: 'insert', index }（插在第 index 列之前，自成一列）或 { type: 'merge', index }（疊進第 index 列）
+        const isNoop = (groups, id, target) => {
+            if (!target) return true;
+            const from = groupIndexOf(groups, id);
+            if (target.type === 'merge') return target.index === from;
+            return groups[from].length === 1 && (target.index === from || target.index === from + 1);
+        };
+
+        const moveCard = (groups, id, target) => {
+            const g = groups.map(x => [...x]);
+            const from = groupIndexOf(g, id);
+            g[from] = g[from].filter(x => x !== id);
+            let index = target.index;
+            if (g[from].length === 0) {
+                g.splice(from, 1);
+                if (from < index) index -= 1;
+            }
+            if (target.type === 'insert') g.splice(index, 0, [id]);
+            else g[index].push(id);
+            return g;
+        };
+
+        // 找出「不用動」的最大卡片集合，其餘卡片標為需要移動
+        // 每一列最多保留一個等級的卡片，且保留的等級必須由上到下嚴格遞增
+        const evaluate = (groups) => {
+            const options = [];
+            groups.forEach((grp, g) => {
+                const byRank = new Map();
+                grp.forEach(id => {
+                    const r = CARD_BY_ID[id].rank;
+                    if (!byRank.has(r)) byRank.set(r, []);
+                    byRank.get(r).push(id);
+                });
+                byRank.forEach((ids, r) => options.push({ g, r, ids }));
+            });
+
+            const score = options.map(o => o.ids.length);
+            const prev = options.map(() => -1);
+            for (let i = 0; i < options.length; i++) {
+                for (let j = 0; j < i; j++) {
+                    if (options[j].g < options[i].g && options[j].r < options[i].r && score[j] + options[i].ids.length > score[i]) {
+                        score[i] = score[j] + options[i].ids.length;
+                        prev[i] = j;
+                    }
+                }
+            }
+            let best = 0;
+            for (let i = 1; i < options.length; i++) if (score[i] > score[best]) best = i;
+
+            const keep = new Set();
+            for (let i = best; i >= 0; i = prev[i]) options[i].ids.forEach(id => keep.add(id));
+
+            const all = groups.flat();
+            const wrong = new Set(all.filter(id => !keep.has(id)));
+            const ranks = [...new Set(all.map(id => CARD_BY_ID[id].rank))].sort((a, b) => a - b);
+            const tierOf = new Map(ranks.map((r, k) => [r, k + 1]));
+            const answer = ranks.map(r => all.filter(id => CARD_BY_ID[id].rank === r));
+
+            const groupOf = new Map();
+            groups.forEach((grp, g) => grp.forEach(id => groupOf.set(id, g)));
+            const partnerOf = new Map();
+            wrong.forEach(id => {
+                const partner = all.find(o => o !== id && CARD_BY_ID[o].rank === CARD_BY_ID[id].rank && groupOf.get(o) !== groupOf.get(id));
+                if (partner) partnerOf.set(id, partner);
+            });
+
+            return { wrong, tierOf, answer, partnerOf, correct: wrong.size === 0 };
+        };
+
+        // ===== MathJax =====
+        let mathQueue = null;
+        const typeset = (el) => {
+            const MJ = window.MathJax;
+            if (!MJ || !MJ.startup || !MJ.startup.promise) {
+                el.classList.remove('mj-pending');
+                return;
+            }
+            mathQueue = (mathQueue || MJ.startup.promise)
+                .then(() => MJ.typesetPromise([el]))
+                .catch(err => console.error(err))
+                .then(() => el.classList.remove('mj-pending'));
+        };
+
+        // src 內用 \( \) 包住數學式；元素內容由 MathJax 管理，不交給 React
+        const MathText = React.memo(({ src, className }) => {
+            const ref = useRef(null);
+            useLayoutEffect(() => {
+                const el = ref.current;
+                el.textContent = src;
+                el.classList.add('mj-pending');
+                typeset(el);
+                return () => {
+                    const MJ = window.MathJax;
+                    if (MJ && MJ.typesetClear) {
+                        try { MJ.typesetClear([el]); } catch (e) { /* 忽略 */ }
+                    }
+                };
+            }, [src]);
+            return <span ref={ref} className={className} />;
+        });
+
+        const cardTex = (id) => `\\(${CARD_BY_ID[id].latex}\\)`;
+
+        // ===== 圖示 =====
         const Shuffle = () => (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
             </svg>
         );
 
         const Check = () => (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M20 6L9 17l-5-5" />
             </svg>
         );
 
         const RotateCcw = () => (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M1 4v6h6M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
             </svg>
         );
 
-        const GrowthRateQuiz = () => {
-            const functions = [
-                { latex: 'n^{2^n}', category: '指數又是指數', rank: 1 },
-                { latex: '2^{2^{n+1}}', category: '指數又是指數', rank: 2 },
-                { latex: '2^{2^n}', category: '指數又是指數', rank: 3 },
-                { latex: 'n^n', category: '階乘', rank: 4 },
-                { latex: '(n+1)!', category: '階乘', rank: 5 },
-                { latex: 'n!', category: '階乘', rank: 6 },
-                { latex: '(\\lg n)^n', category: '階乘', rank: 7 },
-                { latex: 'e^n', category: '指數', rank: 8 },
-                { latex: 'n \\cdot 2^n', category: '指數', rank: 9 },
-                { latex: 'd^n, d>2', category: '指數', rank: 10 },
-                { latex: '2^n', category: '指數', rank: 11 },
-                { latex: '(\\frac{3}{2})^n', category: '指數', rank: 12 },
-                { latex: '(1.0001)^n', category: '指數', rank: 13 },
-                { latex: '(\\lg n)^{\\lg n} = n^{\\lg \\lg n}', category: '特殊', rank: 14 },
-                { latex: '(\\lg n)!', category: '特殊', rank: 15 },
-                { latex: 'n^d, d > 0', category: '多項式', rank: 16 },
-                { latex: 'n^3', category: '多項式', rank: 17 },
-                { latex: 'n^2 = 4^{\\lg n}', category: '多項式', rank: 18 },
-                { latex: 'n \\lg n', category: '多項式', rank: 19 },
-                { latex: '\\lg(n!)', category: '多項式', rank: 20 },
-                { latex: 'n = 2^{\\lg n}', category: '多項式', rank: 21 },
-                { latex: '(\\sqrt{2})^{\\lg n} = \\sqrt{n}', category: '多項式', rank: 22 },
-                { latex: 'n^{0.001}', category: '多項式', rank: 23 },
-                { latex: '2^{\\sqrt{2 \\lg n}}', category: '多項式', rank: 24 },
-                { latex: '(\\lg \\lg n)!', category: '對數', rank: 25 },
-                { latex: '\\lg^2 n', category: '對數', rank: 26 },
-                { latex: '\\lg n = \\ln n', category: '對數', rank: 27 },
-                { latex: '\\lg(n^d), d > 0', category: '對數', rank: 28 },
-                { latex: '2^{\\sqrt{\\lg \\lg n}}', category: '對數', rank: 29 },
-                { latex: '\\sqrt{\\lg n} = \\sqrt{2}^{\\lg \\lg n}', category: '對數', rank: 30 },
-                { latex: '\\lg \\lg n = \\ln \\ln n', category: '對數', rank: 31 },
-                { latex: '2^{\\lg^* n}', category: '對數', rank: 32 },
-                { latex: '\\lg^* n', category: '對數', rank: 33 },
-                { latex: '\\lg^*(\\lg n)', category: '對數', rank: 34 },
-                { latex: '\\lg(\\lg^* n)', category: '對數', rank: 35 },
-                { latex: 'O(1) = n^{\\frac{1}{\\lg n}} = 2', category: '常數', rank: 36 }
-            ];
+        const Grip = () => (
+            <svg width="14" height="20" viewBox="0 0 14 20" fill="currentColor" aria-hidden="true">
+                <circle cx="4" cy="4" r="1.6" /><circle cx="10" cy="4" r="1.6" />
+                <circle cx="4" cy="10" r="1.6" /><circle cx="10" cy="10" r="1.6" />
+                <circle cx="4" cy="16" r="1.6" /><circle cx="10" cy="16" r="1.6" />
+            </svg>
+        );
 
-            const [numFunctions, setNumFunctions] = useState(5);
-            const [selectedFunctions, setSelectedFunctions] = useState([]);
-            const [userOrder, setUserOrder] = useState([]);
-            const [showAnswer, setShowAnswer] = useState(false);
-            const [draggedIndex, setDraggedIndex] = useState(null);
+        // ===== 卡片 =====
+        const Chip = ({ id, selected, dragSource, result, onPointerDown, onActivate, focusRef }) => {
+            const card = CARD_BY_ID[id];
+            const ref = useRef(null);
+            const wrong = result && result.wrong.has(id);
+            const partner = result && result.partnerOf.get(id);
 
             useEffect(() => {
-                if (window.MathJax && window.MathJax.typesetPromise) {
-                    window.MathJax.typesetPromise();
+                if (focusRef.current === id && ref.current) {
+                    focusRef.current = null;
+                    ref.current.focus({ preventScroll: true });
                 }
-            }, [userOrder, showAnswer]);
+            });
 
-            const generateQuiz = () => {
-                const shuffled = [...functions].sort(() => Math.random() - 0.5);
-                const selected = shuffled.slice(0, numFunctions);
-                setSelectedFunctions(selected);
-                setUserOrder([...selected]);
+            return (
+                <div
+                    ref={ref}
+                    className={`chip${selected ? ' selected' : ''}${dragSource ? ' drag-source' : ''}${wrong ? ' error' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selected}
+                    onPointerDown={(e) => onPointerDown(e, id)}
+                    onClick={() => onActivate(id)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onActivate(id);
+                        }
+                    }}
+                >
+                    <span className="handle" aria-hidden="true"><Grip /></span>
+                    <span className="chip-body">
+                        <MathText className="chip-math" src={`\\(${card.latex}\\)`} />
+                        {result && (
+                            <span className="chip-meta">正確：第 {result.tierOf.get(card.rank)} 級｜{CATEGORY_NAME[card.cat]}</span>
+                        )}
+                        {wrong && partner && (
+                            <span className="chip-hint">應與 <MathText src={cardTex(partner)} /> 疊在一起</span>
+                        )}
+                    </span>
+                </div>
+            );
+        };
+
+        // ===== 函數總表 =====
+        const NotesView = () => (
+            <section className="card" aria-label="函數總表">
+                <p className="notes-summary">
+                    共 {CARDS.length} 個函數、{TIER_LIST.length} 個等級，由上到下成長由快到慢，同一行為同級。
+                </p>
+                {CATEGORIES.map(cat => (
+                    <div className="notes-group" key={cat.id}>
+                        <h3>{cat.name}</h3>
+                        <ul>
+                            {TIER_LIST.filter(t => t.cat === cat.id).map(t => (
+                                <li key={t.rank}><MathText className="notes-math" src={t.note} /></li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+            </section>
+        );
+
+        // ===== 主程式 =====
+        const GrowthRateQuiz = () => {
+            const total = CARDS.length;
+            const [tab, setTab] = useState('practice');
+            const [count, setCount] = useState(DEFAULT_COUNT);
+            const [countText, setCountText] = useState(String(DEFAULT_COUNT));
+            const [initialGroups, setInitialGroups] = useState([]);
+            const [groups, setGroups] = useState([]);
+            const [showAnswer, setShowAnswer] = useState(false);
+            const [selectedId, setSelectedId] = useState(null);
+            const [draggingId, setDraggingId] = useState(null);
+            const [dropTarget, setDropTarget] = useState(null);
+
+            const listRef = useRef(null);
+            const dragRef = useRef(null);
+            const targetRef = useRef(null);
+            const suppressClickRef = useRef(false);
+            const focusRef = useRef(null);
+            const latest = useRef({});
+
+            const generate = (n) => {
+                const picked = shuffle(CARDS).slice(0, n);
+                const start = picked.map(c => [c.id]);
+                setInitialGroups(start);
+                setGroups(start);
+                setShowAnswer(false);
+                setSelectedId(null);
+            };
+
+            const commitCount = (n) => {
+                const v = Math.max(MIN_COUNT, Math.min(total, Number.isFinite(n) ? n : count));
+                setCount(v);
+                setCountText(String(v));
+                generate(v);
+            };
+
+            const applyMove = (id, target) => {
+                if (isNoop(latest.current.groups, id, target)) return;
+                setGroups(g => (isNoop(g, id, target) ? g : moveCard(g, id, target)));
                 setShowAnswer(false);
             };
 
+            latest.current = { groups, selectedId, applyMove, clearSelection: () => setSelectedId(null) };
+
             useEffect(() => {
-                generateQuiz();
+                generate(DEFAULT_COUNT);
             }, []);
 
-            const handleDragStart = (e, index) => {
-                setDraggedIndex(index);
-                e.dataTransfer.effectAllowed = 'move';
-            };
-
-            const handleDragOver = (e, index) => {
-                e.preventDefault();
-                if (draggedIndex === null || draggedIndex === index) return;
-
-                const newOrder = [...userOrder];
-                const draggedItem = newOrder[draggedIndex];
-                newOrder.splice(draggedIndex, 1);
-                newOrder.splice(index, 0, draggedItem);
-
-                setUserOrder(newOrder);
-                setDraggedIndex(index);
-            };
-
-            const handleDrop = (e) => {
-                e.preventDefault();
-                setDraggedIndex(null);
-            };
-
-            const handleDragEnd = () => {
-                setDraggedIndex(null);
-            };
-
-            const checkAnswer = () => {
-                setShowAnswer(true);
-            };
-
-            const isCorrect = () => {
-                if (!showAnswer) return null;
-                for (let i = 0; i < userOrder.length - 1; i++) {
-                    if (userOrder[i].rank > userOrder[i + 1].rank) {
-                        return false;
+            // ----- 拖曳（滑鼠、觸控、觸控筆共用 pointer events） -----
+            useEffect(() => {
+                const computeTarget = (y) => {
+                    const d = dragRef.current;
+                    const list = listRef.current;
+                    if (!d || !list) return null;
+                    const rows = [...list.querySelectorAll('[data-row]')];
+                    let t = null;
+                    for (let i = 0; i < rows.length; i++) {
+                        const r = rows[i].getBoundingClientRect();
+                        if (y < r.top) { t = { type: 'insert', index: i }; break; }
+                        if (y <= r.bottom) {
+                            const edge = Math.min(r.height * 0.25, 16);
+                            if (y - r.top < edge) t = { type: 'insert', index: i };
+                            else if (r.bottom - y < edge) t = { type: 'insert', index: i + 1 };
+                            else t = { type: 'merge', index: i };
+                            break;
+                        }
                     }
-                }
-                return true;
+                    if (!t) t = { type: 'insert', index: rows.length };
+                    return isNoop(latest.current.groups, d.id, t) ? null : t;
+                };
+
+                const updateTarget = (t) => {
+                    const prev = targetRef.current;
+                    const same = (!prev && !t) || (prev && t && prev.type === t.type && prev.index === t.index);
+                    if (!same) {
+                        targetRef.current = t;
+                        setDropTarget(t);
+                    }
+                };
+
+                const endDrag = () => {
+                    const d = dragRef.current;
+                    if (d) {
+                        if (d.ghost) d.ghost.remove();
+                        if (d.raf) cancelAnimationFrame(d.raf);
+                    }
+                    dragRef.current = null;
+                    targetRef.current = null;
+                    document.body.classList.remove('is-dragging');
+                    setDropTarget(null);
+                    setDraggingId(null);
+                };
+
+                // 拖到視窗上下緣時自動捲動
+                const autoScroll = () => {
+                    const d = dragRef.current;
+                    if (!d || !d.active) return;
+                    const edge = 70;
+                    let dy = 0;
+                    if (d.lastY < edge) dy = -Math.ceil((edge - d.lastY) / 5);
+                    else if (d.lastY > window.innerHeight - edge) dy = Math.ceil((d.lastY - (window.innerHeight - edge)) / 5);
+                    if (dy !== 0) {
+                        window.scrollBy(0, dy);
+                        updateTarget(computeTarget(d.lastY));
+                    }
+                    d.raf = requestAnimationFrame(autoScroll);
+                };
+
+                const onMove = (e) => {
+                    const d = dragRef.current;
+                    if (!d || e.pointerId !== d.pointerId) return;
+                    if (!d.active) {
+                        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 6) return;
+                        d.active = true;
+                        const rect = d.el.getBoundingClientRect();
+                        const ghost = d.el.cloneNode(true);
+                        ghost.classList.remove('selected', 'error');
+                        ghost.classList.add('ghost');
+                        ghost.setAttribute('aria-hidden', 'true');
+                        ghost.removeAttribute('tabindex');
+                        ghost.style.left = `${rect.left}px`;
+                        ghost.style.top = `${rect.top}px`;
+                        ghost.style.width = `${rect.width}px`;
+                        document.body.appendChild(ghost);
+                        d.ghost = ghost;
+                        document.body.classList.add('is-dragging');
+                        latest.current.clearSelection();
+                        setDraggingId(d.id);
+                        d.raf = requestAnimationFrame(autoScroll);
+                    }
+                    e.preventDefault();
+                    d.lastY = e.clientY;
+                    d.ghost.style.transform = `translate(${e.clientX - d.startX}px, ${e.clientY - d.startY}px)`;
+                    updateTarget(computeTarget(e.clientY));
+                };
+
+                const onUp = (e) => {
+                    const d = dragRef.current;
+                    if (!d || e.pointerId !== d.pointerId) return;
+                    if (!d.active) {
+                        dragRef.current = null;
+                        return;
+                    }
+                    const t = computeTarget(e.clientY);
+                    const id = d.id;
+                    endDrag();
+                    suppressClickRef.current = true;
+                    setTimeout(() => { suppressClickRef.current = false; }, 0);
+                    if (t) latest.current.applyMove(id, t);
+                };
+
+                const onCancel = (e) => {
+                    const d = dragRef.current;
+                    if (d && e.pointerId === d.pointerId) endDrag();
+                };
+
+                const onKey = (e) => {
+                    if (e.key !== 'Escape') return;
+                    if (dragRef.current && dragRef.current.active) endDrag();
+                    latest.current.clearSelection();
+                };
+
+                window.addEventListener('pointermove', onMove, { passive: false });
+                window.addEventListener('pointerup', onUp);
+                window.addEventListener('pointercancel', onCancel);
+                window.addEventListener('keydown', onKey);
+                return () => {
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                    window.removeEventListener('pointercancel', onCancel);
+                    window.removeEventListener('keydown', onKey);
+                };
+            }, []);
+
+            const onChipPointerDown = (e, id) => {
+                if (e.button !== 0 || dragRef.current) return;
+                // 觸控時只從握把拖曳，其他地方保留給捲動頁面
+                if (e.pointerType !== 'mouse' && !e.target.closest('.handle')) return;
+                dragRef.current = { id, el: e.currentTarget, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, lastY: e.clientY, active: false };
+            };
+
+            // 點選模式：點一張卡片選取，再點另一張卡片疊在一起，或點「移到這裡」移動
+            const onChipActivate = (id) => {
+                if (suppressClickRef.current) return;
+                const sel = latest.current.selectedId;
+                if (!sel) { setSelectedId(id); return; }
+                if (sel === id) { setSelectedId(null); return; }
+                const g = latest.current.groups;
+                const to = groupIndexOf(g, id);
+                if (to === groupIndexOf(g, sel)) { setSelectedId(id); return; }
+                focusRef.current = sel;
+                applyMove(sel, { type: 'merge', index: to });
+                setSelectedId(null);
+            };
+
+            const result = useMemo(() => (showAnswer && groups.length ? evaluate(groups) : null), [showAnswer, groups]);
+
+            const renderGap = (index) => {
+                const active = dropTarget && dropTarget.type === 'insert' && dropTarget.index === index;
+                const showButton = selectedId && !isNoop(groups, selectedId, { type: 'insert', index });
+                return (
+                    <div className={`gap${active ? ' active' : ''}`} key={`gap-${index}`}>
+                        {showButton && (
+                            <button
+                                className="gap-btn"
+                                onClick={() => {
+                                    focusRef.current = selectedId;
+                                    applyMove(selectedId, { type: 'insert', index });
+                                    setSelectedId(null);
+                                }}
+                            >
+                                移到這裡
+                            </button>
+                        )}
+                    </div>
+                );
             };
 
             return (
                 <div className="container">
                     <h1 className="title">漸進函數成長速度排序練習</h1>
-                    <p className="subtitle">將函數從成長最快排到最慢（拖曳排序）</p>
+                    <p className="subtitle">將函數從成長最快排到最慢，同級的函數疊在同一列</p>
 
-                    <div className="card">
-                        <div className="control-bar">
-                            <label className="label">選擇函數數量：</label>
-                            <input
-                                type="number"
-                                min="2"
-                                max={functions.length}
-                                value={numFunctions}
-                                onChange={(e) => setNumFunctions(Math.max(2, Math.min(functions.length, parseInt(e.target.value) || 5)))}
-                                className="input-number"
-                            />
-                            <button onClick={generateQuiz} className="btn btn-primary">
-                                <Shuffle />
-                                重新生成
-                            </button>
-                        </div>
+                    <div className="tabs" role="tablist" aria-label="檢視">
+                        <button role="tab" className="tab" aria-selected={tab === 'practice'} onClick={() => setTab('practice')}>排序練習</button>
+                        <button role="tab" className="tab" aria-selected={tab === 'list'} onClick={() => setTab('list')}>函數總表</button>
+                    </div>
 
-                        <div className="functions-list">
-                            {userOrder.map((func, index) => (
-                                <div
-                                    key={`${func.latex}-${index}`}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, index)}
-                                    onDragOver={(e) => handleDragOver(e, index)}
-                                    onDragEnd={handleDragEnd}
-                                    onDrop={handleDrop}
-                                    className={`function-item ${draggedIndex === index ? 'dragging' : ''} ${showAnswer && userOrder[index].rank !== selectedFunctions.sort((a, b) => a.rank - b.rank)[index].rank ? 'error' : ''
-                                        }`}
-                                >
-                                    <div className="function-content">
-                                        <span className="function-number">{index + 1}</span>
-                                        <div className="function-text">
-                                            <div className="function-latex">{`\\(${func.latex}\\)`}</div>
-                                            {showAnswer && <div className="function-category">{func.category}</div>}
-                                        </div>
-                                        {showAnswer && <span className="function-rank">排名: {func.rank}</span>}
-                                    </div>
+                    <section hidden={tab !== 'practice'}>
+                        <div className="card">
+                            <div className="control-bar">
+                                <span className="label" id="count-label">函數數量</span>
+                                <div className="stepper">
+                                    <button className="stepper-btn" aria-label="減少一個" disabled={count <= MIN_COUNT} onClick={() => commitCount(count - 1)}>−</button>
+                                    <input
+                                        className="input-number"
+                                        type="text"
+                                        inputMode="numeric"
+                                        aria-labelledby="count-label"
+                                        value={countText}
+                                        onChange={(e) => setCountText(e.target.value.replace(/[^0-9]/g, ''))}
+                                        onBlur={() => {
+                                            const n = parseInt(countText, 10);
+                                            if (!Number.isFinite(n)) setCountText(String(count));
+                                            else if (n !== count) commitCount(n);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key !== 'Enter') return;
+                                            const n = parseInt(countText, 10);
+                                            if (Number.isFinite(n)) commitCount(n);
+                                            else setCountText(String(count));
+                                        }}
+                                    />
+                                    <button className="stepper-btn" aria-label="增加一個" disabled={count >= total} onClick={() => commitCount(count + 1)}>+</button>
                                 </div>
-                            ))}
-                        </div>
-
-                        <div className="button-group">
-                            <button onClick={checkAnswer} className="btn btn-success">
-                                <Check />
-                                檢查答案
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setUserOrder([...selectedFunctions]);
-                                    setShowAnswer(false);
-                                }}
-                                className="btn btn-secondary"
-                            >
-                                <RotateCcw />
-                                重置排序
-                            </button>
-                        </div>
-
-                        {showAnswer && (
-                            <div className={`result-box ${isCorrect() ? 'result-success' : 'result-warning'}`}>
-                                <p className="result-text">
-                                    {isCorrect() ? '🎉 完全正確！' : '❌ 還有錯誤，請參考正確排名'}
-                                </p>
+                                <span className="total">／ 共 <strong>{total}</strong> 個函數</span>
+                                <button className="btn btn-light" onClick={() => commitCount(total)}>全部</button>
+                                <button className="btn btn-primary" onClick={() => generate(count)}>
+                                    <Shuffle />
+                                    重新出題
+                                </button>
                             </div>
-                        )}
-                    </div>
 
-                    <div className="card">
-                        <h2 className="section-title">使用說明</h2>
-                        <ul className="instructions-list">
-                            <li>拖曳函數卡片來調整順序（從上到下：快→慢）</li>
-                            <li>可以選擇要練習的函數數量</li>
-                            <li>點擊「檢查答案」查看結果</li>
-                            <li>錯誤的位置會用紅色標示</li>
-                        </ul>
-                    </div>
+                            <p className="hint">由上到下：成長最快 → 最慢。拖曳卡片到兩列之間是移動，拖到某一列上是疊在一起（同級）。</p>
+
+                            {selectedId && (
+                                <p className="select-hint" role="status">
+                                    已選取 <MathText src={cardTex(selectedId)} />：點另一張卡片疊在一起，或點「移到這裡」移動；再點一次或按 Esc 取消。
+                                </p>
+                            )}
+
+                            <div className="rows" ref={listRef}>
+                                {renderGap(0)}
+                                {groups.map((grp, gi) => (
+                                    <React.Fragment key={grp[0]}>
+                                        <div
+                                            data-row
+                                            className={`row${dropTarget && dropTarget.type === 'merge' && dropTarget.index === gi ? ' merge-target' : ''}`}
+                                        >
+                                            <span className="row-number">{gi + 1}</span>
+                                            <div className="chips">
+                                                {grp.map(id => (
+                                                    <Chip
+                                                        key={id}
+                                                        id={id}
+                                                        selected={selectedId === id}
+                                                        dragSource={draggingId === id}
+                                                        result={result}
+                                                        onPointerDown={onChipPointerDown}
+                                                        onActivate={onChipActivate}
+                                                        focusRef={focusRef}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {renderGap(gi + 1)}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+
+                            <div className="button-group">
+                                <button onClick={() => { setSelectedId(null); setShowAnswer(true); }} className="btn btn-success">
+                                    <Check />
+                                    檢查答案
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setGroups(initialGroups);
+                                        setShowAnswer(false);
+                                        setSelectedId(null);
+                                    }}
+                                    className="btn btn-secondary"
+                                >
+                                    <RotateCcw />
+                                    重置排序
+                                </button>
+                            </div>
+
+                            {result && (
+                                <div className={`result-box ${result.correct ? 'result-success' : 'result-warning'}`} role="status">
+                                    <p className="result-text">
+                                        {result.correct
+                                            ? '🎉 完全正確！'
+                                            : `❌ 有 ${result.wrong.size} 張卡片需要移動（紅色標示），正確順序列在下方`}
+                                    </p>
+                                </div>
+                            )}
+
+                            {result && !result.correct && (
+                                <div className="answer">
+                                    <h2 className="section-title">正確順序</h2>
+                                    <ol className="answer-list">
+                                        {result.answer.map((ids, k) => (
+                                            <li className="answer-item" key={ids[0]}>
+                                                <span className="answer-number">{k + 1}</span>
+                                                <span className="answer-chips">
+                                                    {ids.map(id => (
+                                                        <MathText key={id} className="answer-chip" src={cardTex(id)} />
+                                                    ))}
+                                                </span>
+                                                <span className="answer-cat">{CATEGORY_NAME[CARD_BY_ID[ids[0]].cat]}</span>
+                                            </li>
+                                        ))}
+                                    </ol>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="card">
+                            <h2 className="section-title">使用說明</h2>
+                            <ul className="instructions-list">
+                                <li>把函數由上到下排成成長「最快 → 最慢」；同級的函數要疊在同一列</li>
+                                <li>拖曳卡片：放在兩列之間是移動，放在某一列上是疊在一起；從疊好的列拖出來放到兩列之間即可拆開</li>
+                                <li>手機請按住卡片左側的握把拖曳，卡片其他地方可以正常捲動頁面</li>
+                                <li>也可以點一下卡片選取，再點另一張卡片疊在一起，或點「移到這裡」移動</li>
+                                <li>點擊「檢查答案」後，需要移動的卡片會以紅色標示，並列出正確順序</li>
+                            </ul>
+                        </div>
+                    </section>
+
+                    {tab === 'list' && <NotesView />}
                 </div>
             );
         };
 
-        ReactDOM.render(<GrowthRateQuiz />, document.getElementById('root'));
+        ReactDOM.createRoot(document.getElementById('root')).render(<GrowthRateQuiz />);
     </script>
 </body>
 
